@@ -20,21 +20,13 @@ eval_answers = [
 ]
 
 
-def send_to_openai(message: str) -> str:
-    openai.api_key = os.getenv("OPENAI_API_KEY")
-
-    if not openai.api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-
-    messages = [{"role": "user", "content": message}]
-
-    completion = openai.ChatCompletion.create(
-        model="gpt-4o",
-        messages=cast(Iterable[Any], messages)
+def send_to_openai(message):
+  openai.api_key = os.environ.get("OPENAI_API_KEY")
+  completion = openai.chat.completions.create(
+    model="gpt-4o",
+    messages=[{"role": "user", "content": message}]
     )
-
-    # Use dict-style access which is robust across different SDK versions
-    return completion["choices"][0]["message"]["content"].strip()
+  return completion.choices[0].message.content.strip()
 
 def evaluate_generated_answer(expected_answer,generated_answer):
     prompt = f"""Please evaluate the generated answer. 
