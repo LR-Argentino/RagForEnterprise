@@ -1,7 +1,6 @@
 import openai
 import os
 from dotenv import load_dotenv
-from typing import Any, Iterable, cast
 
 load_dotenv()
 
@@ -19,13 +18,12 @@ eval_answers = [
     "After a catheterization done via the wrist, it is recommended to wait for at least 24 hours before resuming any form of physical activity. This is to prevent any complications such as bleeding or infection at the site of insertion. It is also important to monitor the site for any signs of swelling, redness, or discharge. If any of these symptoms occur, it is recommended to seek medical attention immediately."
 ]
 
-
 def send_to_openai(message):
   openai.api_key = os.environ.get("OPENAI_API_KEY")
   completion = openai.chat.completions.create(
-    model="gpt-4o",
-    messages=[{"role": "user", "content": message}]
-    )
+    model = "gpt-4o",
+    messages = [{"role": "user", "content": message}]
+  )
   return completion.choices[0].message.content.strip()
 
 def evaluate_generated_answer(expected_answer,generated_answer):
