@@ -1,10 +1,15 @@
-from run_evals import evaluate_generated_answer
+"""Automated evaluation tests for RAG system."""
+
+from src.evaluation.run_evals import evaluate_generated_answer
+
 
 def run_RAG(user_questions):
+    """Placeholder for RAG function - to be implemented."""
     return "IDKOL"
 
 
 def test_run_RAG():
+    """Test RAG responses against expected answers using LLM evaluation."""
     eval_questions = [
         "Why was arsenic used to treat diseases?",
         "What oil is good for you to cook with?",
@@ -19,9 +24,15 @@ def test_run_RAG():
         "After a catheterization done via the wrist, it is recommended to wait for at least 24 hours before resuming any form of physical activity. This is to prevent any complications such as bleeding or infection at the site of insertion. It is also important to monitor the site for any signs of swelling, redness, or discharge. If any of these symptoms occur, it is recommended to seek medical attention immediately."
     ]
     generated_answers = []
+
     for question in eval_questions:
         answer = run_RAG(question)
         generated_answers.append(answer)
+
     for i in range(len(eval_questions)):
         result = evaluate_generated_answer(eval_answers[i], generated_answers[i])
+        print(f"Question {i+1}: {eval_questions[i]}")
+        print(f"Expected: {eval_answers[i][:100]}...")
+        print(f"Generated: {generated_answers[i]}")
+        print(f"Evaluation result: {result}")
         assert "PASS" in result

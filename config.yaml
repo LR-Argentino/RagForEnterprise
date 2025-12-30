@@ -1,0 +1,18 @@
+openai:
+  model: "gpt-4o"
+  embedding_model:
+    name: "text-embedding-3-small"
+    dimensions: 1536
+
+ai_search:
+  index_name: "product-search-index"
+  endpoint: "https://product-search-engine.search.windows.net"
+
+database:
+  path: "products.db"
+
+sqlalchemy:
+  sqlite_engine_url: "sqlite:///products.db"
+
+logging:
+  level: "INFO"

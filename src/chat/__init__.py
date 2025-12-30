@@ -1,0 +1,32 @@
+
+"""Chat module for RAG functionality."""
+
+from src.chat.rag_chat import (
+    AzureSearchError,
+    EmbeddingError,
+    azure_ai_search_agent,
+    check_language,
+    create_group_chat,
+    create_search_agent,
+    create_writer_agent,
+    get_query_embedding,
+    group_chat,
+    openai_client,
+    search_product_documents,
+    writer_agent,
+)
+
+__all__ = [
+    "AzureSearchError",
+    "EmbeddingError",
+    "azure_ai_search_agent",
+    "check_language",
+    "create_group_chat",
+    "create_search_agent",
+    "create_writer_agent",
+    "get_query_embedding",
+    "group_chat",
+    "openai_client",
+    "search_product_documents",
+    "writer_agent",
+]

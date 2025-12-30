@@ -1,1 +1,19 @@
+# Environment
 .env
+.venv/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# IDE
+.idea/
+
+# Database
+*.db
+
+# OS
+.DS_Store
