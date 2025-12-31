@@ -65,6 +65,15 @@ class AzureAISearchConfig:
     api_key: str
     endpoint: str
     index_name: str
+    pdf_index_name: str
+
+
+@dataclass(frozen=True)
+class DocumentIntelligenceConfig:
+    """Azure Document Intelligence configuration."""
+    api_key: str
+    endpoint: str
+    model_id: str
 
 
 @dataclass(frozen=True)
@@ -87,6 +96,7 @@ class AppConfig:
     azure_ai_search: AzureAISearchConfig
     database: DatabaseConfig
     logging: LoggingConfig
+    document_intelligence: DocumentIntelligenceConfig
 
 
 def load_config() -> AppConfig:
@@ -126,6 +136,16 @@ def load_config() -> AppConfig:
         api_key=_get_required_env("AI_SEARCH_KEY"),
         endpoint=ai_search_section.get("endpoint", _get_required_env("AI_SEARCH_ENDPOINT")),
         index_name=ai_search_section.get("index_name", _get_required_env("AI_SEARCH_NAME")),
+        pdf_index_name=ai_search_section.get("pdf_index_name", "pdf-document-index"),
+    )
+
+    # Build Document Intelligence config
+    doc_intel_section = yaml_config.get("document_intelligence", {})
+
+    document_intelligence_config = DocumentIntelligenceConfig(
+        api_key=_get_required_env("DOCUMENT_INTELLIGENCE_KEY"),
+        endpoint=doc_intel_section.get("endpoint", ""),
+        model_id=doc_intel_section.get("model_id", "prebuilt-layout"),
     )
 
     # Build Database config
@@ -149,6 +169,7 @@ def load_config() -> AppConfig:
         azure_ai_search=azure_ai_search_config,
         database=database_config,
         logging=logging_config,
+        document_intelligence=document_intelligence_config,
     )
 
 
