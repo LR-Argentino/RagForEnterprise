@@ -13,7 +13,7 @@ from src.chat.rag_chat import (
     openai_client,
     search_product_documents,
     writer_agent,
-    RAGChat
+    RAGChat_streaming
 )
 
 __all__ = [
@@ -28,5 +28,5 @@ __all__ = [
     "openai_client",
     "search_product_documents",
     "writer_agent",
-    "RAGChat"
+    "RAGChat_streaming"
 ]

@@ -20,6 +20,11 @@ class SqliteClient:
             cursor.execute(query, params)
         else:
             cursor.execute(query)
+
+        # Commit for write operations (INSERT, UPDATE, DELETE)
+        if query.strip().upper().startswith(("INSERT", "UPDATE", "DELETE")):
+            self._connection.commit()
+
         results = cursor.fetchall()
         cursor.close()
         return results

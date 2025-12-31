@@ -1,9 +1,10 @@
 """RAG Chat module with Azure AI Search integration and AutoGen agents."""
 import asyncio
-from typing import Any, Dict, List
+from typing import Any, AsyncGenerator, Dict, List
 
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.base import TaskResult
+from autogen_agentchat.messages import ModelClientStreamingChunkEvent
 from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
 from autogen_agentchat.teams import RoundRobinGroupChat
 from autogen_ext.models.openai import OpenAIChatCompletionClient
@@ -240,47 +241,38 @@ Answer: {answer}"""
     return result
 
 
-# Module-level instances for backward compatibility
 openai_client = _create_openai_client()
 azure_ai_search_agent = create_search_agent(openai_client)
 writer_agent = create_writer_agent(openai_client)
 rag_log_service = RagLogService()
 
-# group_chat = create_group_chat([azure_ai_search_agent, writer_agent])
+async def RAGChat_streaming(
+    chat_history: str,
+    user_question: str,
+    user_email: str
+) -> AsyncGenerator[str, None]:
+    """
+    Streaming version of RAGChat - yields response chunks as they arrive.
 
+    Args:
+        chat_history: Previous conversation context
+        user_question: The user's question
+        user_email: User email for logging
 
-async def RAGChat(chat_history: str, user_question: str, user_email: str):
-    # ---- PHASE 1: Produkt Suche ----
-    # product_db_groupchat = create_group_chat([azure_ai_search_agent])
-
+    Yields:
+        str: Response chunks as they are generated
+    """
+    # ---- PHASE 1: Search (non-streaming, we need complete results) ----
     SEARCH_PROMPT = f"""Please search and find enough information to answer the user's question.
     User Question: {user_question}"""
 
-    # When running in script use asyncio
     search_result: TaskResult = await azure_ai_search_agent.run(task=SEARCH_PROMPT)
 
-    # DEBUG: Print message structure to understand AutoGen's response format
-    print("\n=== DEBUG: search_result.messages ===")
-    for i, msg in enumerate(search_result.messages):
-        print(f"\n[{i}] Type: {type(msg).__name__}")
-        print(f"    Source: {getattr(msg, 'source', 'N/A')}")
-        if hasattr(msg, 'content'):
-            content = msg.content
-            print(f"    Content type: {type(content).__name__}")
-            if isinstance(content, list):
-                for j, item in enumerate(content):
-                    print(f"      [{j}] Item type: {type(item).__name__}")
-                    print(f"          Item: {item}")
-            else:
-                print(f"    Content: {content[:500] if isinstance(content, str) else content}")
-    print("=== END DEBUG ===\n")
-
-    # Extract retrieved data - handle both text messages and function execution results
+    # Extract retrieved data
     retrieved_data_parts = []
     for msg in search_result.messages:
         if hasattr(msg, 'content'):
             content = msg.content
-            # Handle FunctionExecutionResultMessage (tool results are in a list)
             if isinstance(content, list):
                 for item in content:
                     if hasattr(item, 'content'):
@@ -292,42 +284,76 @@ async def RAGChat(chat_history: str, user_question: str, user_email: str):
 
     retrieved_data = "\n".join(retrieved_data_parts)
 
-    # ---- PHASE 2: Writer Agent ----
+    # ---- PHASE 2: Writer Agent with Streaming ----
     WRITER_PROMPT = f"""Please write the final answer to the user's question: \n{user_question}\n\n
           You may use the chat history to help you write the answer. \n {chat_history}\n\n
         The information retrieved from the search agents is:
         {retrieved_data}. I will tip you $200 for an excellent result."""
 
-    # When running in script use asyncio
-    writer_result: TaskResult = await writer_agent.run(task=WRITER_PROMPT)
+    # Collect full answer for logging and language check
+    final_answer_parts = []
 
-    # When running outside of script TODO: Change this if this running outside of script
-    #writer_result: TaskResult = await writer_agent.run(task=WRITER_PROMPT)
+    # Stream the response
+    async for event in writer_agent.run_stream(task=WRITER_PROMPT):
+        if isinstance(event, ModelClientStreamingChunkEvent):
+            chunk = event.content
+            final_answer_parts.append(chunk)
+            yield chunk
 
-    final_answer = ""
-    for msg in reversed(writer_result.messages):
-        if hasattr(msg, 'content') and len(str(msg.content)) > 2:
-            final_answer = str(msg.content)
-            break
+    # Reconstruct full answer for post-processing
+    final_answer = "".join(final_answer_parts)
 
+    # Language check (after streaming complete)
     translated_answer = check_language(user_question, final_answer)
-
-    # DEBUG: check_language result
-    print(f"\n=== DEBUG check_language ===")
-    print(f"User question: {user_question}")
-    print(f"Final answer (before check): {final_answer[:200]}...")
-    print(f"check_language result: {translated_answer[:200] if len(translated_answer) > 200 else translated_answer}")
-    print(f"=== END DEBUG ===\n")
-
     if translated_answer != "LANGUAGE VERIFIED":
+        # If translation was needed, yield a notice and the translated version
+        yield "\n\n[Translated to match question language:]\n"
+        yield translated_answer
         final_answer = translated_answer
 
     # ---- LOGGING ----
-    rag_log = RagLog(user_email=user_email,
-                     user_question=user_question,
-                     agents_search_results=str(retrieved_data),
-                     final_answer=final_answer)
-
+    rag_log = RagLog(
+        user_email=user_email,
+        user_question=user_question,
+        agents_search_results=str(retrieved_data),
+        final_answer=final_answer
+    )
     rag_log_service.store_answer(rag_log)
-    # store_answer_info(user_email, user_question, str(retrieved_data), final_answer)
-    return final_answer
+
+
+# ============================================================================
+# TODO: FastAPI Streaming Endpoint (uncomment when needed)
+# ============================================================================
+# from fastapi import FastAPI
+# from fastapi.responses import StreamingResponse
+# from pydantic import BaseModel
+#
+# app = FastAPI()
+#
+# class ChatRequest(BaseModel):
+#     chat_history: str
+#     question: str
+#     user_email: str
+#
+# @app.post("/chat/stream")
+# async def chat_stream(request: ChatRequest):
+#     """Server-Sent Events endpoint for streaming chat responses."""
+#     async def generate():
+#         async for chunk in RAGChat_streaming(
+#             request.chat_history,
+#             request.question,
+#             request.user_email
+#         ):
+#             # SSE format: data: <content>\n\n
+#             yield f"data: {chunk}\n\n"
+#         yield "data: [DONE]\n\n"
+#
+#     return StreamingResponse(
+#         generate(),
+#         media_type="text/event-stream",
+#         headers={
+#             "Cache-Control": "no-cache",
+#             "Connection": "keep-alive",
+#         }
+#     )
+# ============================================================================
