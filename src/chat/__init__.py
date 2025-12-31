@@ -10,10 +10,10 @@ from src.chat.rag_chat import (
     create_search_agent,
     create_writer_agent,
     get_query_embedding,
-    group_chat,
     openai_client,
     search_product_documents,
     writer_agent,
+    RAGChat
 )
 
 __all__ = [
@@ -25,8 +25,8 @@ __all__ = [
     "create_search_agent",
     "create_writer_agent",
     "get_query_embedding",
-    "group_chat",
     "openai_client",
     "search_product_documents",
     "writer_agent",
+    "RAGChat"
 ]
