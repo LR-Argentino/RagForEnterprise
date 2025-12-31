@@ -6,7 +6,7 @@ async def main_streaming():
     print("Streaming response:\n")
     async for chunk in RAGChat_streaming(
         "<no chat history>",
-        "Katzen, Katzen ich liebe Katzen. Was ist das Produkt Pants?",
+        "Kannst du mir meine Einkaufsliste anzeigen?",
         "luca.argentino@icloud.com"
     ):
         print(chunk, end="", flush=True)

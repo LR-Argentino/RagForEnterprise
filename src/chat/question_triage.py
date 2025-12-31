@@ -1,74 +1,77 @@
 from ..evaluation import send_to_openai
 
-TRIAGE_PROMPT = f"""You are a helpful assistant.  You are responsible for    
-    categorizing user questions.
+TRIAGE_PROMPT = """You are a helpful assistant responsible for categorizing user questions.
 
-If the user's question is about a product, please return *PRODUCT.
-For example, if the user asks a question about Dubious Parenting Advice, please return
+You have access to TWO data sources:
+1. **Products database** - Product information, specifications, descriptions
+2. **Documents database** - Receipts, invoices, tickets, bills, scanned documents
 
-    *PRODUCT 
+## Classification Rules
 
-If the user's question is about an order, please return *ORDER.
-For example, if the user asks a question about Order number 12345, 
-please return
+**Return *PRODUCT if the user asks about:**
+- Product features, specifications, descriptions
+- Product availability, pricing, comparisons
+- General product questions
+- Example: "What are the features of Product X?" → *PRODUCT
+- Example: "Tell me about the new smartphone" → *PRODUCT
 
-    *ORDER
+**Return *DOCUMENT if the user asks about:**
+- Receipts, invoices, bills
+- Tickets (train, flight, concert, parking, etc.)
+- Personal documents, scanned papers
+- Amounts, prices, dates from documents
+- Example: "Wie viel hat mein Zugticket gekostet?" → *DOCUMENT
+- Example: "Show me my restaurant receipt" → *DOCUMENT
+- Example: "What was the total on my invoice?" → *DOCUMENT
+- Example: "Find my parking ticket" → *DOCUMENT
 
-If you are not sure which category a user's question belongs to, return 
-*CLARIFY followed by a request for clarification in
-square brackets.  Your request should try to gain enough information 
-from the user to decide which of the above 2 categories you should  
-choose for their question.
+**Return *CLARIFY if:**
+- You cannot determine which category the question belongs to
+- The question is ambiguous
+- Include a clarification request in brackets
 
-    For example, if the user enters:
+## Response Format
 
-    12345689
+Return ONLY the category marker:
+- *PRODUCT
+- *DOCUMENT
+- *CLARIFY [Your clarification request]
 
-    Please return:
+User Question: {0}
 
-*CLARIFY [I'm sorry but I don't understand what you are asking.  Are 
-you looking for a product or an order?]
+Chat history: {1}
+"""
 
-Remember that you ONLY have access to information in our Products and 
-Orders databases.  If the user asks for information which would 
-not be in either of those databases, please let them know that you do 
-not have access to that information.
 
-    For example, if the user enters:
-    What is the address of our headquarters?
-
-    Please return:
-
-*CLARIFY [I'm sorry but I don't have access to that information.  I 
-only have access to information in our Products and Orders databases.  
-If the information you are looking for is not in one of those two 
-databases, then I don’t have access to it.]
-
-If you cannot answer the user's question, please try to guide the user 
-to a question that you can answer using the sources you have access to.
-
-    User Question: {0}
-
-    Chat history: {1}
+def triage(user_question: str, chat_history: str = "") -> tuple[str, str]:
     """
+    Categorize user question into PRODUCT, DOCUMENT, or CLARIFY.
 
+    Args:
+        user_question: The user's question to categorize.
+        chat_history: Previous conversation context.
 
-def triage(user_question, chat_history):
+    Returns:
+        Tuple of (category, raw_result) where category is one of:
+        - "PRODUCT" - Query product-search-index
+        - "DOCUMENT" - Query pdf-document-index
+        - "CLARIFY" - Need more information from user
+    """
     formatted_triage_prompt = TRIAGE_PROMPT.format(user_question, chat_history)
 
-
     result = send_to_openai(formatted_triage_prompt)
-    result = result.content
 
     if "*PRODUCT" in result:
         return "PRODUCT", result.strip()
 
-    elif "*ORDER" in result:
-        return "ORDER", result.strip()
+    elif "*DOCUMENT" in result:
+        return "DOCUMENT", result.strip()
 
     elif "*CLARIFY" in result:
         result = result.replace("[", "")
-    result = result.replace("]", "")
-    result = result.replace("*CLARIFY", "")
-    return "CLARIFY", result.strip()
+        result = result.replace("]", "")
+        result = result.replace("*CLARIFY", "")
+        return "CLARIFY", result.strip()
+
+    return "CLARIFY", "Ich konnte deine Anfrage nicht zuordnen. Suchst du nach einem Produkt oder einem Dokument (Rechnung/Ticket/Beleg)?"
 
