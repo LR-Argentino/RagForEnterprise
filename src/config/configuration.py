@@ -81,6 +81,7 @@ class DatabaseConfig:
     """Database configuration."""
     path: str
     sqlite_engine_url: str
+    document_tracking_path: str
 
 
 @dataclass(frozen=True)
@@ -155,6 +156,7 @@ def load_config() -> AppConfig:
     database_config = DatabaseConfig(
         path=db_section.get("path", "products.db"),
         sqlite_engine_url=sqlalchemy_section.get("sqlite_engine_url", "sqlite:///products.db"),
+        document_tracking_path=db_section.get("document_tracking_path", "document_tracking.db"),
     )
 
     # Build Logging config

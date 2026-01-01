@@ -29,6 +29,7 @@ You have access to TWO data sources:
 - You cannot determine which category the question belongs to
 - The question is ambiguous
 - Include a clarification request in brackets
+- IMPORTANT: Write the clarification request in the SAME LANGUAGE as the user's question
 
 ## Response Format
 

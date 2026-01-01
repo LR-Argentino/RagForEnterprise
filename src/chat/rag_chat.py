@@ -16,7 +16,6 @@ from openai import AsyncOpenAI, OpenAIError
 from typing_extensions import Annotated
 
 from src.config.configuration import get_config
-from src.evaluation.run_evals import send_to_openai
 from ..models import RagLog
 from ..services import RagLogService
 # Constants for chat behavior (not externalized to config)
@@ -238,7 +237,11 @@ WRITER_ASSISTANT_SYSTEM_MESSAGE = """You are a helpful assistant for a company c
 Your job is to answer the user's question using the provided information.
 DO NOT rely on your own knowledge, ONLY use the provided info.
 If you don't know the answer, just say you don't know.
-You are amazing and you can do this. I will pay you $200 for an excellent result, but only if you follow all instructions exactly."""
+
+CRITICAL: You MUST respond in the SAME LANGUAGE as the user's question.
+- If the user asks in German, respond in German.
+- If the user asks in English, respond in English.
+- Always match the user's language exactly."""
 
 
 def create_search_agent(client: OpenAIChatCompletionClient) -> AssistantAgent:
@@ -290,38 +293,6 @@ def create_group_chat(
     return RoundRobinGroupChat(
         agents, termination_condition=termination, max_turns=max_turns
     )
-
-
-def check_language(user_question: str, answer: str) -> str:
-    """
-    Verify answer language matches question language, translating if needed.
-
-    Args:
-        user_question: The original question from the user.
-        answer: The generated answer to verify/translate.
-
-    Returns:
-        "LANGUAGE VERIFIED" if languages match, otherwise the translated answer.
-    """
-    check_language_prompt = f"""
-You are an expert at languages and translation.
-Please make sure the answer is written in the same language as the user's question.
-If the answer and the question are both written in the same language, return
-TRUE.
-Otherwise, return the answer translated into the same language as the user's question.
-
-For example, if the user's question is in German but the answer is in English, please
-return the answer, translated into German.
-
-User question: {user_question}
-
-Answer: {answer}"""
-
-    result = send_to_openai(check_language_prompt)
-
-    if "TRUE" in result:
-        return "LANGUAGE VERIFIED"
-    return result
 
 
 openai_client = _create_openai_client()
@@ -401,16 +372,8 @@ async def RAGChat_streaming(
             final_answer_parts.append(chunk)
             yield chunk
 
-    # Reconstruct full answer for post-processing
+    # Reconstruct full answer for logging
     final_answer = "".join(final_answer_parts)
-
-    # Language check (after streaming complete)
-    translated_answer = check_language(user_question, final_answer)
-    if translated_answer != "LANGUAGE VERIFIED":
-        # If translation was needed, yield a notice and the translated version
-        yield "\n\n[Translated to match question language:]\n"
-        yield translated_answer
-        final_answer = translated_answer
 
     # ---- LOGGING ----
     rag_log = RagLog(
