@@ -1,3 +1,5 @@
+# Test Configuration - CosmosDB Backend (production-like)
+
 openai:
   model: "gpt-4o"
   embedding_model:
@@ -18,7 +20,6 @@ database:
   document_tracking_path: "document_tracking.db"
 
 audit_log:
-  # Backend options: "sqlite" (local, free) or "cosmosdb" (production, paid)
   backend: "cosmosdb"
   sqlite_path: "rag_logs.db"
 

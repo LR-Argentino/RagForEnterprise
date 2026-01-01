@@ -39,7 +39,8 @@ Eine umfassende Dokumentation für neue Entwickler, um die Codebase schnell zu v
 | Vektor-Suche | Azure AI Search |
 | PDF-Extraktion | Azure Document Intelligence |
 | Multi-Agent Framework | AutoGen |
-| Datenbank | SQLite |
+| Datenbank | SQLite (lokal) / Azure Cosmos DB (Produktion) |
+| Audit Logs | SQLite oder Azure Cosmos DB (konfigurierbar) |
 
 ---
 
@@ -54,6 +55,7 @@ RagInProduction/
 │   │   └── question_triage.py            # Fragen-Klassifizierung
 │   ├── clients/
 │   │   ├── sqlite_client.py              # SQLite-Abstraktion
+│   │   ├── cosmosdb_client.py            # Azure Cosmos DB Client
 │   │   └── document_intelligence_client.py
 │   ├── config/
 │   │   └── configuration.py              # Konfigurationsverwaltung
@@ -63,7 +65,7 @@ RagInProduction/
 │   │   ├── product.py                    # Produkt-Modell
 │   │   └── document_tracker.py           # Dokument-Tracking
 │   ├── services/
-│   │   ├── rag_log_service.py            # Logging-Service
+│   │   ├── rag_log_service.py            # Audit-Logging (SQLite/CosmosDB)
 │   │   ├── document_tracking_service.py  # Deduplizierung
 │   │   └── products_service.py           # Produkt-Service
 │   ├── ingestion/
@@ -75,7 +77,9 @@ RagInProduction/
 ├── tests/
 │   ├── test_automated_evals.py
 │   ├── test_document_tracking.py
-│   └── test_pdf_ingestion.py
+│   ├── test_pdf_ingestion.py
+│   ├── test_rag_log_service.py           # SQLite Backend Tests
+│   └── test_cosmosdb_integration.py      # CosmosDB Integration Tests
 ├── config.yaml                           # Nicht-sensible Konfiguration
 ├── requirements.txt
 └── CLAUDE.md
@@ -104,12 +108,14 @@ graph TB
         OPENAI[OpenAI API]
         AZURE_SEARCH[Azure AI Search]
         DOC_INTEL[Azure Document Intelligence]
+        COSMOS[(Azure Cosmos DB)]
     end
 
     subgraph "Daten-Layer"
         PRODUCT_IDX[(Product Index)]
         PDF_IDX[(PDF Index)]
         SQLITE[(SQLite DBs)]
+        AUDIT{Audit Logs<br/>SQLite / CosmosDB}
     end
 
     CLI --> TRIAGE
@@ -129,7 +135,9 @@ graph TB
     WRITER --> OPENAI
     WRITER --> CLI
 
-    WRITER --> SQLITE
+    WRITER --> AUDIT
+    AUDIT -->|sqlite| SQLITE
+    AUDIT -->|cosmosdb| COSMOS
 ```
 
 ### Multi-Agent Architektur
@@ -289,7 +297,43 @@ with SqliteClient("path.db") as client:
     client.execute_query(sql, params)
 ```
 
-### 4. Configuration (`src/config/configuration.py`)
+### 4. Cosmos DB Client (`src/clients/cosmosdb_client.py`)
+
+Async Client für Azure Cosmos DB NoSQL API:
+
+```python
+async with CosmosDBClient(endpoint, key, db_name, container_name) as client:
+    await client.upsert_item({"id": "123", "data": "value"})
+    items = await client.query_items("SELECT * FROM c WHERE c.user = @user", params)
+```
+
+**Features:**
+- Automatische Datenbank/Container-Erstellung
+- Async Context Manager für sauberes Ressourcen-Management
+- CRUD-Operationen: `upsert_item`, `read_item`, `query_items`, `delete_item`
+
+### 5. RAG Log Service (`src/services/rag_log_service.py`)
+
+Audit-Logging mit konfigurierbarem Backend:
+
+```mermaid
+flowchart LR
+    CONFIG[config.yaml<br/>audit_log.backend] --> TOGGLE{Backend?}
+    TOGGLE -->|sqlite| SQLITE[SQLite Client<br/>Lokal, kostenlos]
+    TOGGLE -->|cosmosdb| COSMOS[CosmosDB Client<br/>Cloud, skalierbar]
+
+    SQLITE --> STORE[store_answer]
+    COSMOS --> STORE
+```
+
+**Backend-Auswahl via `config.yaml`:**
+```yaml
+audit_log:
+  backend: "sqlite"     # oder "cosmosdb"
+  sqlite_path: "rag_logs.db"
+```
+
+### 6. Configuration (`src/config/configuration.py`)
 
 Singleton-Pattern für Konfigurationsverwaltung:
 
@@ -301,7 +345,11 @@ flowchart LR
     APP --> OPENAI[OpenAIConfig]
     APP --> AZURE[AzureAISearchConfig]
     APP --> DB[DatabaseConfig]
+    APP --> AUDIT[AuditLogConfig]
+    APP --> COSMOS[CosmosDBConfig?]
 ```
+
+**Hinweis:** `CosmosDBConfig` wird nur geladen wenn `audit_log.backend = "cosmosdb"`
 
 ---
 
@@ -491,30 +539,48 @@ graph TB
 
 ## Konfiguration
 
-### Konfigurationsstruktur
+### Umgebungsspezifische Konfiguration
 
 ```mermaid
 flowchart TD
+    subgraph "Umgebungswahl"
+        APP_ENV[APP_ENV Variable]
+        APP_ENV -->|dev| DEV[config_dev.yaml<br/>SQLite Backend]
+        APP_ENV -->|test| TEST[config_test.yaml<br/>CosmosDB Backend]
+        APP_ENV -->|default| DEFAULT[config.yaml]
+    end
+
     subgraph "Quellen"
         ENV[.env<br/>Secrets]
-        YAML[config.yaml<br/>Einstellungen]
+        YAML[Config YAML]
     end
 
     subgraph "AppConfig"
-        OAI[OpenAIConfig<br/>- api_key<br/>- model<br/>- embedding_model]
-        AZ[AzureAISearchConfig<br/>- endpoint<br/>- api_key<br/>- index_name]
-        DB[DatabaseConfig<br/>- path<br/>- tracking_path]
-        DI[DocumentIntelligenceConfig<br/>- endpoint<br/>- key]
+        OAI[OpenAIConfig]
+        AZ[AzureAISearchConfig]
+        DB[DatabaseConfig]
+        AUDIT[AuditLogConfig]
+        COSMOS[CosmosDBConfig?]
     end
+
+    DEV --> YAML
+    TEST --> YAML
+    DEFAULT --> YAML
 
     ENV --> OAI
     ENV --> AZ
-    ENV --> DI
     YAML --> OAI
     YAML --> AZ
     YAML --> DB
-    YAML --> DI
+    YAML --> AUDIT
+    YAML --> COSMOS
 ```
+
+| Umgebung | Config-Datei | Audit Backend | Verwendung |
+|----------|--------------|---------------|------------|
+| `APP_ENV=dev` | `config_dev.yaml` | SQLite | Lokale Entwicklung |
+| `APP_ENV=test` | `config_test.yaml` | CosmosDB | Produktions-Tests |
+| Default | `config.yaml` | Konfiguriert | Fallback |
 
 ### Erforderliche Umgebungsvariablen
 
@@ -525,6 +591,10 @@ AI_SEARCH_KEY=...               # Azure Search API Key
 AI_SEARCH_NAME=...              # Azure Search Service Name
 AI_SEARCH_ENDPOINT=https://...  # Azure Search Endpoint
 DOCUMENT_INTELLIGENCE_KEY=...   # Azure Doc Intel Key
+
+# Nur bei audit_log.backend = "cosmosdb":
+COSMOSDB_ENDPOINT=https://...   # Cosmos DB Account Endpoint
+COSMOSDB_KEY=...                # Cosmos DB Account Key
 ```
 
 ### config.yaml Beispiel
@@ -548,6 +618,17 @@ document_intelligence:
 database:
   path: "products.db"
   document_tracking_path: "document_tracking.db"
+
+# Audit Log Backend Toggle
+audit_log:
+  backend: "sqlite"              # "sqlite" (lokal) oder "cosmosdb" (produktion)
+  sqlite_path: "rag_logs.db"
+
+# Nur wenn audit_log.backend = "cosmosdb"
+cosmosdb:
+  database_name: "ragchat_info"
+  container_name: "ragchat_logs"
+  partition_key_path: "/id"
 ```
 
 ---
@@ -580,14 +661,21 @@ cp .env.example .env
 # Interaktiven Chat starten
 python src/main.py
 
+# Mit spezifischer Umgebung starten
+APP_ENV=dev python src/main.py   # SQLite Backend
+APP_ENV=test python src/main.py  # CosmosDB Backend
+
 # PDF-Index erstellen
 python src/ingestion/create_pdf_index.py
 
 # PDFs ingesten
 python src/ingestion/pdf_ingestion.py
 
-# Alle Tests ausführen
-pytest -s
+# Alle Tests ausführen (Entwicklung mit SQLite)
+APP_ENV=dev pytest -s
+
+# Tests mit CosmosDB Backend
+APP_ENV=test pytest -s
 
 # Einzelnen Test ausführen
 pytest tests/test_document_tracking.py::TestDocumentTrackingService -s
@@ -601,12 +689,20 @@ graph TB
         A[test_automated_evals.py<br/>RAG-Qualität]
         B[test_document_tracking.py<br/>Deduplizierung]
         C[test_pdf_ingestion.py<br/>PDF-Pipeline]
+        D[test_rag_log_service.py<br/>SQLite Backend]
+        E[test_cosmosdb_integration.py<br/>CosmosDB Backend]
     end
 
     A --> |LLM-Evaluierung| OPENAI[OpenAI GPT-4o]
     B --> |Unit Tests| SQLITE[SQLite]
     C --> |Integration| AZURE[Azure Services]
+    D --> |Unit Tests| SQLITE
+    E --> |Integration| COSMOS[Azure Cosmos DB]
 ```
+
+**Test-Kategorien:**
+- `test_rag_log_service.py`: Läuft immer (keine externen Abhängigkeiten)
+- `test_cosmosdb_integration.py`: Wird übersprungen ohne `COSMOSDB_*` Env-Vars
 
 ### Wichtige Konstanten
 
@@ -665,6 +761,16 @@ with DocumentTrackingService("path.db") as service:
 async with search_client:
     results = await search_client.search(...)
 # Automatische Client-Schließung
+
+# CosmosDB (Async)
+async with CosmosDBClient(endpoint, key, db, container) as client:
+    await client.upsert_item(data)
+# Automatische Verbindung schließen
+
+# RAG Log Service (Async, beide Backends)
+async with RagLogService() as service:
+    await service.store_answer(rag_log)
+# Backend-unabhängige Ressourcen-Freigabe
 ```
 
 ---
@@ -692,10 +798,23 @@ RagInProduction ist ein produktionsreifes RAG-System mit:
 - Multi-Source Dokumentensuche (Produkte + PDFs)
 - Intelligentem Fragen-Routing via Triage
 - Echtzeit-Streaming-Antworten
-- Umfassendem Audit-Trail-Logging
+- **Konfigurierbarem Audit-Logging** (SQLite für Entwicklung, Cosmos DB für Produktion)
 - Smarter Deduplizierung
 - Mehrsprachiger Unterstützung (DE/EN)
 - Async/Await-Architektur für hohe Parallelität
 - Ordnungsgemäßer Ressourcen-Bereinigung via Context Manager
+
+### Backend-Wechsel für Audit Logs
+
+```yaml
+# Entwicklung (kostenlos, lokal)
+audit_log:
+  backend: "sqlite"
+  sqlite_path: "rag_logs.db"
+
+# Produktion (skalierbar, cloud)
+audit_log:
+  backend: "cosmosdb"
+```
 
 Bei Fragen zur Architektur oder Implementierung, siehe die einzelnen Module und ihre Docstrings.

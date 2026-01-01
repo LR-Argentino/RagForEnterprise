@@ -1,3 +1,5 @@
+# Development Configuration - SQLite Backend (local, free)
+
 openai:
   model: "gpt-4o"
   embedding_model:
@@ -18,14 +20,8 @@ database:
   document_tracking_path: "document_tracking.db"
 
 audit_log:
-  # Backend options: "sqlite" (local, free) or "cosmosdb" (production, paid)
-  backend: "cosmosdb"
+  backend: "sqlite"
   sqlite_path: "rag_logs.db"
 
-cosmosdb:
-  database_name: "ragchat_info"
-  container_name: "ragchat_logs"
-  partition_key_path: "/id"
-
 logging:
-  level: "INFO"
+  level: "DEBUG"

@@ -1,6 +1,11 @@
 """Configuration module for RagInProduction.
 
-Loads settings from config.yaml for non-sensitive values and .env for API keys.
+Loads settings from environment-specific config files:
+- APP_ENV=dev  → config_dev.yaml (SQLite backend, local development)
+- APP_ENV=test → config_test.yaml (CosmosDB backend, production-like testing)
+- Default      → config.yaml
+
+API keys are loaded from .env file.
 Fails fast with clear error messages if required configuration is missing.
 """
 
@@ -24,11 +29,35 @@ def _get_project_root() -> Path:
     return Path(__file__).parent.parent.parent
 
 
+def _get_config_filename() -> str:
+    """Get config filename based on APP_ENV environment variable.
+
+    Returns:
+        Config filename:
+        - APP_ENV=dev  → config_dev.yaml
+        - APP_ENV=test → config_test.yaml
+        - Default      → config.yaml
+    """
+    app_env = os.environ.get("APP_ENV", "").lower()
+
+    if app_env == "dev":
+        return "config_dev.yaml"
+    elif app_env == "test":
+        return "config_test.yaml"
+    else:
+        return "config.yaml"
+
+
 def _load_yaml_config() -> dict:
-    """Load configuration from config.yaml."""
-    config_path = _get_project_root() / "config.yaml"
+    """Load configuration from environment-specific config file."""
+    config_filename = _get_config_filename()
+    config_path = _get_project_root() / config_filename
+
     if not config_path.exists():
-        raise ConfigurationError(f"Configuration file not found: {config_path}")
+        raise ConfigurationError(
+            f"Configuration file not found: {config_path}. "
+            f"Set APP_ENV to 'dev' or 'test', or create {config_filename}."
+        )
 
     with open(config_path, "r") as f:
         return yaml.safe_load(f)
@@ -91,6 +120,23 @@ class LoggingConfig:
 
 
 @dataclass(frozen=True)
+class AuditLogConfig:
+    """Audit log configuration with backend toggle."""
+    backend: str  # "sqlite" or "cosmosdb"
+    sqlite_path: str
+
+
+@dataclass(frozen=True)
+class CosmosDBConfig:
+    """Azure Cosmos DB configuration for audit logs."""
+    endpoint: str
+    key: str
+    database_name: str
+    container_name: str
+    partition_key_path: str
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Main application configuration container."""
     openai: OpenAIConfig
@@ -98,6 +144,8 @@ class AppConfig:
     database: DatabaseConfig
     logging: LoggingConfig
     document_intelligence: DocumentIntelligenceConfig
+    audit_log: AuditLogConfig
+    cosmosdb: Optional[CosmosDBConfig]  # Only required when audit_log.backend == "cosmosdb"
 
 
 def load_config() -> AppConfig:
@@ -166,12 +214,35 @@ def load_config() -> AppConfig:
         level=logging_section.get("level", "INFO"),
     )
 
+    # Build AuditLog config
+    audit_log_section = yaml_config.get("audit_log", {})
+    audit_log_backend = audit_log_section.get("backend", "sqlite")
+
+    audit_log_config = AuditLogConfig(
+        backend=audit_log_backend,
+        sqlite_path=audit_log_section.get("sqlite_path", "rag_logs.db"),
+    )
+
+    # Build CosmosDB config (only if backend is cosmosdb)
+    cosmosdb_config: Optional[CosmosDBConfig] = None
+    if audit_log_backend == "cosmosdb":
+        cosmosdb_section = yaml_config.get("cosmosdb", {})
+        cosmosdb_config = CosmosDBConfig(
+            endpoint=_get_required_env("COSMOSDB_ENDPOINT"),
+            key=_get_required_env("COSMOSDB_KEY"),
+            database_name=cosmosdb_section.get("database_name", "ragchat_info"),
+            container_name=cosmosdb_section.get("container_name", "ragchat_logs"),
+            partition_key_path=cosmosdb_section.get("partition_key_path", "/id"),
+        )
+
     return AppConfig(
         openai=openai_config,
         azure_ai_search=azure_ai_search_config,
         database=database_config,
         logging=logging_config,
         document_intelligence=document_intelligence_config,
+        audit_log=audit_log_config,
+        cosmosdb=cosmosdb_config,
     )
 
 
@@ -184,6 +255,7 @@ def get_config() -> AppConfig:
     Get the application configuration singleton.
 
     Lazy-loads configuration on first access.
+    Config file is selected based on APP_ENV environment variable.
 
     Returns:
         AppConfig: Application configuration.
@@ -195,3 +267,19 @@ def get_config() -> AppConfig:
     if _config is None:
         _config = load_config()
     return _config
+
+
+def get_environment() -> str:
+    """Get current environment name.
+
+    Returns:
+        'dev', 'test', or 'default' based on APP_ENV.
+    """
+    app_env = os.environ.get("APP_ENV", "").lower()
+    return app_env if app_env in ("dev", "test") else "default"
+
+
+def reset_config() -> None:
+    """Reset the config singleton. Useful for testing."""
+    global _config
+    _config = None

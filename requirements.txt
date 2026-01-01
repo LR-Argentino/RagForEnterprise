@@ -7,3 +7,4 @@ aiohttp
 azure-ai-documentintelligence>=1.0.0
 azure-search-documents>=11.4.0
 datasets>=2.0.0
+azure-cosmos
