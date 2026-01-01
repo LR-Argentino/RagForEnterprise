@@ -16,7 +16,6 @@ from openai import AsyncOpenAI, OpenAIError
 from typing_extensions import Annotated
 
 from src.config.configuration import get_config
-from src.evaluation.run_evals import send_to_openai
 from ..models import RagLog
 from ..services import RagLogService
 # Constants for chat behavior (not externalized to config)
@@ -55,11 +54,21 @@ def _create_async_openai_client() -> AsyncOpenAI:
 
 
 def _create_azure_search_client() -> AsyncSearchClient:
-    """Create Azure AI Search async client."""
+    """Create Azure AI Search async client for product index."""
     config = get_config()
     return AsyncSearchClient(
         endpoint=config.azure_ai_search.endpoint,
         index_name=config.azure_ai_search.index_name,
+        credential=AzureKeyCredential(config.azure_ai_search.api_key),
+    )
+
+
+def _create_pdf_search_client() -> AsyncSearchClient:
+    """Create Azure AI Search async client for PDF document index."""
+    config = get_config()
+    return AsyncSearchClient(
+        endpoint=config.azure_ai_search.endpoint,
+        index_name=config.azure_ai_search.pdf_index_name,
         credential=AzureKeyCredential(config.azure_ai_search.api_key),
     )
 
@@ -145,6 +154,54 @@ async def search_product_documents(
         raise AzureSearchError(f"Azure Search operation failed: {e}") from e
 
 
+async def search_pdf_documents(
+        search_term: Annotated[str, "Search term to search for in PDF documents."]
+) -> List[Dict[str, Any]]:
+    """
+    Search Azure AI Search Index containing PDF documents.
+
+    Searches for PDF documents like receipts, invoices, tickets, and bills
+    using both text and vector search.
+
+    Args:
+        search_term: The search query string.
+
+    Returns:
+        List of search result documents with fields:
+        - document_name: Name of the PDF file
+        - page_number: Page number within the document
+        - page_content: Extracted text content
+        - source_dataset: Origin dataset identifier
+
+    Raises:
+        AzureSearchError: If the search operation fails.
+    """
+    try:
+        query_embedding = await get_query_embedding(search_term)
+    except EmbeddingError as e:
+        raise AzureSearchError(f"Failed to prepare search: {e}") from e
+
+    # PDF index uses lowercase "vector" field name
+    vector_query = VectorizedQuery(
+        vector=query_embedding,
+        k_nearest_neighbors=VECTOR_K_NEAREST_NEIGHBORS,
+        fields="vector",
+    )
+
+    search_client = _create_pdf_search_client()
+
+    try:
+        async with search_client:
+            results = await search_client.search(
+                search_text=search_term,
+                vector_queries=[vector_query],
+                top=SEARCH_TOP_K,
+            )
+            return [result async for result in results]
+    except AzureError as e:
+        raise AzureSearchError(f"Azure Search operation failed: {e}") from e
+
+
 SEARCH_ASSISTANT_SYSTEM_MESSAGE = """
 You are a helpful assistant for a company called Products, Inc.
 You have access to an Azure AI Search Index containing product records, and you may search them.
@@ -161,20 +218,49 @@ When enough information has been retrieved to answer the user's question to full
 please return "TERMINATE" to end the conversation. If more information must be collected, please return CONTINUE.
 """
 
+DOCUMENT_SEARCH_ASSISTANT_SYSTEM_MESSAGE = """
+You are a helpful assistant that searches through personal documents.
+You have access to an Azure AI Search Index containing PDF documents like receipts, invoices, tickets, and bills.
+The correct syntax for a search is: "what you want to search for".
+Please use the search function to find the relevant documents for the user's question.
+DO NOT rely on your own knowledge, ONLY use the information retrieved from the search.
+If you find a receipt or ticket, extract the relevant information (amounts, dates, items).
+Please be honest about what you find. I am not looking for perfection, just the truth.
+You are amazing and you can do this.
+I will pay you $200 for an excellent result, but only if you follow all instructions exactly.
+
+When enough information has been retrieved to answer the user's question to full satisfaction,
+please return "TERMINATE" to end the conversation. If more information must be collected, please return CONTINUE.
+"""
+
 WRITER_ASSISTANT_SYSTEM_MESSAGE = """You are a helpful assistant for a company called Products, Inc.
 Your job is to answer the user's question using the provided information.
 DO NOT rely on your own knowledge, ONLY use the provided info.
 If you don't know the answer, just say you don't know.
-You are amazing and you can do this. I will pay you $200 for an excellent result, but only if you follow all instructions exactly."""
+
+CRITICAL: You MUST respond in the SAME LANGUAGE as the user's question.
+- If the user asks in German, respond in German.
+- If the user asks in English, respond in English.
+- Always match the user's language exactly."""
 
 
 def create_search_agent(client: OpenAIChatCompletionClient) -> AssistantAgent:
-    """Create the search assistant agent."""
+    """Create the product search assistant agent."""
     return AssistantAgent(
         name="search_assistant",
         model_client=client,
         system_message=SEARCH_ASSISTANT_SYSTEM_MESSAGE,
         tools=[search_product_documents],
+    )
+
+
+def create_document_search_agent(client: OpenAIChatCompletionClient) -> AssistantAgent:
+    """Create the document search assistant agent for PDFs."""
+    return AssistantAgent(
+        name="document_search_assistant",
+        model_client=client,
+        system_message=DOCUMENT_SEARCH_ASSISTANT_SYSTEM_MESSAGE,
+        tools=[search_pdf_documents],
     )
 
 
@@ -209,40 +295,9 @@ def create_group_chat(
     )
 
 
-def check_language(user_question: str, answer: str) -> str:
-    """
-    Verify answer language matches question language, translating if needed.
-
-    Args:
-        user_question: The original question from the user.
-        answer: The generated answer to verify/translate.
-
-    Returns:
-        "LANGUAGE VERIFIED" if languages match, otherwise the translated answer.
-    """
-    check_language_prompt = f"""
-You are an expert at languages and translation.
-Please make sure the answer is written in the same language as the user's question.
-If the answer and the question are both written in the same language, return
-TRUE.
-Otherwise, return the answer translated into the same language as the user's question.
-
-For example, if the user's question is in German but the answer is in English, please
-return the answer, translated into German.
-
-User question: {user_question}
-
-Answer: {answer}"""
-
-    result = send_to_openai(check_language_prompt)
-
-    if "TRUE" in result:
-        return "LANGUAGE VERIFIED"
-    return result
-
-
 openai_client = _create_openai_client()
 azure_ai_search_agent = create_search_agent(openai_client)
+document_search_agent = create_document_search_agent(openai_client)
 writer_agent = create_writer_agent(openai_client)
 rag_log_service = RagLogService()
 
@@ -254,6 +309,8 @@ async def RAGChat_streaming(
     """
     Streaming version of RAGChat - yields response chunks as they arrive.
 
+    Uses triage to determine whether to search products or documents.
+
     Args:
         chat_history: Previous conversation context
         user_question: The user's question
@@ -262,11 +319,26 @@ async def RAGChat_streaming(
     Yields:
         str: Response chunks as they are generated
     """
+    from src.chat.question_triage import triage
+
+    # ---- PHASE 0: Triage - determine which index to search ----
+    category, triage_result = triage(user_question, chat_history)
+
+    if category == "CLARIFY":
+        yield triage_result
+        return
+
     # ---- PHASE 1: Search (non-streaming, we need complete results) ----
     SEARCH_PROMPT = f"""Please search and find enough information to answer the user's question.
     User Question: {user_question}"""
 
-    search_result: TaskResult = await azure_ai_search_agent.run(task=SEARCH_PROMPT)
+    # Select the appropriate search agent based on triage
+    if category == "DOCUMENT":
+        search_agent = document_search_agent
+    else:  # PRODUCT
+        search_agent = azure_ai_search_agent
+
+    search_result: TaskResult = await search_agent.run(task=SEARCH_PROMPT)
 
     # Extract retrieved data
     retrieved_data_parts = []
@@ -300,16 +372,8 @@ async def RAGChat_streaming(
             final_answer_parts.append(chunk)
             yield chunk
 
-    # Reconstruct full answer for post-processing
+    # Reconstruct full answer for logging
     final_answer = "".join(final_answer_parts)
-
-    # Language check (after streaming complete)
-    translated_answer = check_language(user_question, final_answer)
-    if translated_answer != "LANGUAGE VERIFIED":
-        # If translation was needed, yield a notice and the translated version
-        yield "\n\n[Translated to match question language:]\n"
-        yield translated_answer
-        final_answer = translated_answer
 
     # ---- LOGGING ----
     rag_log = RagLog(

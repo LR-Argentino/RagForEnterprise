@@ -6,10 +6,16 @@ openai:
 
 ai_search:
   index_name: "product-search-index"
+  pdf_index_name: "pdf-document-index"
   endpoint: "https://product-search-engine.search.windows.net"
+
+document_intelligence:
+  endpoint: "https://azure-document-idp.cognitiveservices.azure.com/"
+  model_id: "prebuilt-layout"
 
 database:
   path: "products.db"
+  document_tracking_path: "document_tracking.db"
 
 sqlalchemy:
   sqlite_engine_url: "sqlite:///products.db"
