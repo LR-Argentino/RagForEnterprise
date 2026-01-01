@@ -382,7 +382,7 @@ async def RAGChat_streaming(
         agents_search_results=str(retrieved_data),
         final_answer=final_answer
     )
-    rag_log_service.store_answer(rag_log)
+    await rag_log_service.store_answer(rag_log)
 
 
 # ============================================================================
