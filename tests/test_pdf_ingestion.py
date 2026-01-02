@@ -9,15 +9,15 @@ These tests require:
 
 import pytest
 
-from src.config.configuration import get_config
-from src.ingestion.pdf_ingestion import (
+from src.rag.config import get_config
+from src.rag.ingestion.pdf_ingestion import (
     _create_openai_client,
     _create_pdf_search_client,
     embed_chunk,
     load_huggingface_dataset,
 )
-from src.ingestion.create_pdf_index import create_pdf_document_index
-from src.models.pdf_chunk import PDFChunk, PDFChunkWithEmbedding
+from src.rag.ingestion import create_pdf_document_index
+from src.rag.models import PDFChunk, PDFChunkWithEmbedding
 
 
 class TestConfiguration:

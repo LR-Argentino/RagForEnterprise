@@ -9,11 +9,12 @@ Eine umfassende Dokumentation für neue Entwickler, um die Codebase schnell zu v
 3. [Systemarchitektur](#systemarchitektur)
 4. [Datenfluss](#datenfluss)
 5. [Kernmodule](#kernmodule)
-6. [Datenmodelle](#datenmodelle)
-7. [PDF-Ingestion-Pipeline](#pdf-ingestion-pipeline)
-8. [Azure AI Search Integration](#azure-ai-search-integration)
-9. [Konfiguration](#konfiguration)
-10. [Entwicklung & Testing](#entwicklung--testing)
+6. [WebSocket API](#websocket-api)
+7. [Datenmodelle](#datenmodelle)
+8. [PDF-Ingestion-Pipeline](#pdf-ingestion-pipeline)
+9. [Azure AI Search Integration](#azure-ai-search-integration)
+10. [Konfiguration](#konfiguration)
+11. [Entwicklung & Testing](#entwicklung--testing)
 
 ---
 
@@ -34,6 +35,7 @@ Eine umfassende Dokumentation für neue Entwickler, um die Codebase schnell zu v
 | Komponente | Technologie |
 |------------|-------------|
 | Sprache | Python 3.14+ |
+| Web Framework | FastAPI + WebSocket |
 | LLM | OpenAI GPT-4o |
 | Embeddings | text-embedding-3-small (1536 Dimensionen) |
 | Vektor-Suche | Azure AI Search |
@@ -50,9 +52,14 @@ Eine umfassende Dokumentation für neue Entwickler, um die Codebase schnell zu v
 RagInProduction/
 ├── src/
 │   ├── main.py                           # CLI Entry Point
-│   ├── chat/
-│   │   ├── rag_chat.py                   # RAG-Orchestrierung
-│   │   └── question_triage.py            # Fragen-Klassifizierung
+│   ├── api/
+│   │   ├── __init__.py                   # FastAPI App Factory
+│   │   └── controller/
+│   │       └── chat_controller.py        # WebSocket Chat Controller
+│   ├── rag/
+│   │   └── chat/
+│   │       ├── rag_chat.py               # RAG-Orchestrierung
+│   │       └── question_triage.py        # Fragen-Klassifizierung
 │   ├── clients/
 │   │   ├── sqlite_client.py              # SQLite-Abstraktion
 │   │   ├── cosmosdb_client.py            # Azure Cosmos DB Client
@@ -95,6 +102,7 @@ RagInProduction/
 graph TB
     subgraph "Benutzer-Interface"
         CLI[CLI / main.py]
+        WS[WebSocket API<br/>FastAPI]
     end
 
     subgraph "RAG Core"
@@ -119,6 +127,7 @@ graph TB
     end
 
     CLI --> TRIAGE
+    WS --> TRIAGE
     TRIAGE -->|PRODUCT| SEARCH_AGENT
     TRIAGE -->|DOCUMENT| DOC_AGENT
     TRIAGE -->|CLARIFY| WRITER
@@ -350,6 +359,133 @@ flowchart LR
 ```
 
 **Hinweis:** `CosmosDBConfig` wird nur geladen wenn `audit_log.backend = "cosmosdb"`
+
+---
+
+## WebSocket API
+
+### Übersicht
+
+Die WebSocket API ermöglicht Echtzeit-Streaming-Kommunikation mit dem RAG-System, ideal für Frontend-Integrationen (Angular, React, etc.).
+
+```mermaid
+sequenceDiagram
+    participant C as Angular Client
+    participant WS as WebSocket Server
+    participant RAG as RAGChat_streaming
+
+    C->>WS: connect ws://localhost:8000/chat/ws
+    WS-->>C: connection accepted
+
+    C->>WS: {"question": "...", "user_email": "...", "chat_history": ""}
+    WS->>RAG: RAGChat_streaming()
+
+    loop Streaming
+        RAG-->>WS: chunk
+        WS-->>C: {"type": "chunk", "content": "..."}
+    end
+
+    WS-->>C: {"type": "done", "content": ""}
+```
+
+### Server starten
+
+```bash
+# Abhängigkeiten installieren (falls noch nicht geschehen)
+pip install uvicorn[standard]
+
+# WebSocket Server starten
+uvicorn src.api:app --reload --host 0.0.0.0 --port 8000
+
+# Mit spezifischer Umgebung
+APP_ENV=dev uvicorn src.api:app --reload --port 8000
+```
+
+### Endpoints
+
+| Endpoint | Typ | Beschreibung |
+|----------|-----|--------------|
+| `ws://localhost:8000/chat/ws` | WebSocket | Streaming RAG Chat |
+| `GET /health` | HTTP | Health Check |
+
+### Protokoll
+
+**Client → Server (JSON):**
+```json
+{
+  "question": "Was kostet das Produkt X?",
+  "user_email": "user@example.com",
+  "chat_history": ""
+}
+```
+
+**Server → Client (JSON):**
+```json
+{"type": "chunk", "content": "Das Produkt X kostet"}
+{"type": "chunk", "content": " 49,99 Euro."}
+{"type": "done", "content": ""}
+```
+
+**Fehlerfall:**
+```json
+{"type": "error", "content": "Fehlerbeschreibung"}
+```
+
+### Angular Client Beispiel
+
+```typescript
+import { Injectable } from '@angular/core';
+import { Subject, Observable } from 'rxjs';
+
+@Injectable({ providedIn: 'root' })
+export class ChatService {
+  private ws: WebSocket | null = null;
+  private messageSubject = new Subject<string>();
+
+  connect(): void {
+    this.ws = new WebSocket('ws://localhost:8000/chat/ws');
+
+    this.ws.onmessage = (event) => {
+      const response = JSON.parse(event.data);
+      if (response.type === 'chunk') {
+        this.messageSubject.next(response.content);
+      } else if (response.type === 'done') {
+        this.messageSubject.complete();
+      } else if (response.type === 'error') {
+        this.messageSubject.error(response.content);
+      }
+    };
+  }
+
+  sendQuestion(question: string, userEmail: string, chatHistory: string = ''): Observable<string> {
+    this.messageSubject = new Subject<string>();
+
+    this.ws?.send(JSON.stringify({
+      question,
+      user_email: userEmail,
+      chat_history: chatHistory
+    }));
+
+    return this.messageSubject.asObservable();
+  }
+
+  disconnect(): void {
+    this.ws?.close();
+  }
+}
+```
+
+### Architektur
+
+```
+src/api/
+├── __init__.py              # FastAPI App Factory mit CORS
+└── controller/
+    ├── __init__.py          # Router Exports
+    └── chat_controller.py   # WebSocket Endpoint
+```
+
+**Controller Pattern:** APIRouter für modulare Erweiterbarkeit
 
 ---
 
@@ -658,10 +794,16 @@ cp .env.example .env
 ### Befehle
 
 ```bash
-# Interaktiven Chat starten
+# WebSocket API Server starten (für Angular/Frontend)
+uvicorn src.api:app --reload --host 0.0.0.0 --port 8000
+
+# WebSocket Server mit spezifischer Umgebung
+APP_ENV=dev uvicorn src.api:app --reload --port 8000
+
+# Interaktiven CLI Chat starten
 python src/main.py
 
-# Mit spezifischer Umgebung starten
+# CLI mit spezifischer Umgebung starten
 APP_ENV=dev python src/main.py   # SQLite Backend
 APP_ENV=test python src/main.py  # CosmosDB Backend
 
@@ -795,6 +937,7 @@ Das System unterstützt Deutsch und Englisch vollständig:
 
 RagInProduction ist ein produktionsreifes RAG-System mit:
 
+- **WebSocket API** für Frontend-Integration (Angular, React, etc.)
 - Multi-Source Dokumentensuche (Produkte + PDFs)
 - Intelligentem Fragen-Routing via Triage
 - Echtzeit-Streaming-Antworten

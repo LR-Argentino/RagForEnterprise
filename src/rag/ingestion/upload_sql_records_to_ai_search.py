@@ -9,7 +9,7 @@ from azure.core.credentials import AzureKeyCredential
 from azure.search.documents import SearchClient
 from openai import OpenAI
 
-from src.config.configuration import get_config
+from src.rag.config.configuration import get_config
 
 
 def _create_openai_client() -> OpenAI:

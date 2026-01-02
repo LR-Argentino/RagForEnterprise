@@ -1,5 +1,4 @@
 """RAG Chat module with Azure AI Search integration and AutoGen agents."""
-import asyncio
 from typing import Any, AsyncGenerator, Dict, List
 
 from autogen_agentchat.agents import AssistantAgent
@@ -15,9 +14,9 @@ from azure.search.documents.models import VectorizedQuery
 from openai import AsyncOpenAI, OpenAIError
 from typing_extensions import Annotated
 
-from src.config.configuration import get_config
+from src.rag.config.configuration import get_config
 from ..models import RagLog
-from ..services import RagLogService
+from src.rag.services import RagLogService
 # Constants for chat behavior (not externalized to config)
 SEARCH_TOP_K = 3
 VECTOR_K_NEAREST_NEIGHBORS = 3
@@ -319,7 +318,7 @@ async def RAGChat_streaming(
     Yields:
         str: Response chunks as they are generated
     """
-    from src.chat.question_triage import triage
+    from src.rag.chat.question_triage import triage
 
     # ---- PHASE 0: Triage - determine which index to search ----
     category, triage_result = triage(user_question, chat_history)
@@ -383,41 +382,3 @@ async def RAGChat_streaming(
         final_answer=final_answer
     )
     await rag_log_service.store_answer(rag_log)
-
-
-# ============================================================================
-# TODO: FastAPI Streaming Endpoint (uncomment when needed)
-# ============================================================================
-# from fastapi import FastAPI
-# from fastapi.responses import StreamingResponse
-# from pydantic import BaseModel
-#
-# app = FastAPI()
-#
-# class ChatRequest(BaseModel):
-#     chat_history: str
-#     question: str
-#     user_email: str
-#
-# @app.post("/chat/stream")
-# async def chat_stream(request: ChatRequest):
-#     """Server-Sent Events endpoint for streaming chat responses."""
-#     async def generate():
-#         async for chunk in RAGChat_streaming(
-#             request.chat_history,
-#             request.question,
-#             request.user_email
-#         ):
-#             # SSE format: data: <content>\n\n
-#             yield f"data: {chunk}\n\n"
-#         yield "data: [DONE]\n\n"
-#
-#     return StreamingResponse(
-#         generate(),
-#         media_type="text/event-stream",
-#         headers={
-#             "Cache-Control": "no-cache",
-#             "Connection": "keep-alive",
-#         }
-#     )
-# ============================================================================

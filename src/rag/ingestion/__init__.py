@@ -1,6 +1,6 @@
 """Data ingestion module for Azure AI Search."""
 
-from src.ingestion.upload_sql_records_to_ai_search import (
+from src.rag.ingestion.upload_sql_records_to_ai_search import (
     clean_record_summary,
     embed_text,
     ingest_all_records,
@@ -8,7 +8,7 @@ from src.ingestion.upload_sql_records_to_ai_search import (
     summarize_sql_record,
     upload_to_ai_search,
 )
-from src.ingestion.pdf_ingestion import (
+from src.rag.ingestion.pdf_ingestion import (
     PDFIngestionError,
     EmbeddingError,
     AzureSearchError,
@@ -19,7 +19,7 @@ from src.ingestion.pdf_ingestion import (
     process_single_pdf,
     ingest_pdf_dataset,
 )
-from src.ingestion.create_pdf_index import (
+from src.rag.ingestion.create_pdf_index import (
     create_pdf_document_index,
     delete_pdf_document_index,
 )

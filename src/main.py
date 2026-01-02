@@ -1,5 +1,5 @@
 import asyncio
-from chat import RAGChat_streaming
+from src.rag.chat import RAGChat_streaming
 
 USER_EMAIL = "luca.argentino@icloud.com"
 

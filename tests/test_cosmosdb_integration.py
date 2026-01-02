@@ -8,16 +8,15 @@ They verify:
 - Query functionality with partition keys
 """
 
-import os
 import uuid
 from datetime import datetime, timezone
 
 import pytest
 
-from src.clients.cosmosdb_client import CosmosDBClient
-from src.config.configuration import get_config, ConfigurationError
-from src.models import RagLog
-from src.services.rag_log_service import RagLogService
+from src.rag.clients.cosmosdb_client import CosmosDBClient
+from src.rag.config import get_config, ConfigurationError
+from src.rag.models import RagLog
+from src.rag.services.rag_log_service import RagLogService
 
 
 def cosmos_credentials_available() -> bool:

@@ -14,7 +14,7 @@ from azure.search.documents.indexes.models import (
     VectorSearchProfile,
 )
 
-from src.config.configuration import get_config
+from src.rag.config.configuration import get_config
 
 logger = logging.getLogger(__name__)
 

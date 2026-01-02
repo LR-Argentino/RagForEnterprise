@@ -11,8 +11,8 @@ import logging
 from datetime import datetime, timezone
 from typing import Optional
 
-from ..clients import SqliteClient
-from ..models import TrackedDocument, DocumentStatus
+from src.rag.clients import SqliteClient
+from src.rag.models import TrackedDocument, DocumentStatus
 
 logger = logging.getLogger(__name__)
 

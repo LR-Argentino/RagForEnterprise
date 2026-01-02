@@ -13,7 +13,7 @@ import uuid
 
 import pytest
 
-from src.models import RagLog
+from src.rag.models import RagLog
 
 
 class TestRagLogServiceSQLite:
@@ -62,7 +62,7 @@ class TestRagLogServiceSQLite:
             yaml.dump(config_content, f)
 
         # Monkeypatch the config path
-        from src.config import configuration
+        from src.rag.config import configuration
 
         original_get_project_root = configuration._get_project_root
 
@@ -93,7 +93,7 @@ class TestRagLogServiceSQLite:
     @pytest.fixture
     def rag_log_service(self, sqlite_config):
         """Create a RagLogService with SQLite backend."""
-        from src.services.rag_log_service import RagLogService
+        from src.rag.services.rag_log_service import RagLogService
 
         service = RagLogService()
         yield service
@@ -203,7 +203,7 @@ class TestRagLogServiceSQLite:
     @pytest.mark.asyncio
     async def test_context_manager_sqlite(self, sqlite_config):
         """Test service works as async context manager with SQLite."""
-        from src.services.rag_log_service import RagLogService
+        from src.rag.services.rag_log_service import RagLogService
 
         test_email = f"context-{uuid.uuid4().hex[:8]}@example.com"
 
@@ -251,7 +251,6 @@ class TestBackendToggle:
         """Test that invalid backend raises ValueError."""
         import yaml
         import tempfile
-        from pathlib import Path
 
         # Set up minimal environment variables
         monkeypatch.setenv("OPENAI_API_KEY", "test-key")
@@ -273,7 +272,7 @@ class TestBackendToggle:
         with open(config_path, "w") as f:
             yaml.dump(config_content, f)
 
-        from src.config import configuration
+        from src.rag.config import configuration
 
         def mock_load():
             with open(config_path, "r") as f:
@@ -283,7 +282,7 @@ class TestBackendToggle:
         configuration._config = None
 
         try:
-            from src.services.rag_log_service import RagLogService
+            from src.rag.services.rag_log_service import RagLogService
 
             with pytest.raises(ValueError, match="Unknown audit_log backend"):
                 RagLogService()
@@ -322,8 +321,8 @@ class TestBackendToggle:
         with open(config_path, "w") as f:
             yaml.dump(config_content, f)
 
-        from src.config import configuration
-        from src.config.configuration import ConfigurationError
+        from src.rag.config import configuration
+        from src.rag.config import ConfigurationError
 
         def mock_load():
             with open(config_path, "r") as f:
@@ -336,7 +335,7 @@ class TestBackendToggle:
             # Should raise ConfigurationError when trying to load config
             # because COSMOSDB_ENDPOINT is required when backend is cosmosdb
             with pytest.raises(ConfigurationError):
-                from src.config.configuration import load_config
+                from src.rag.config import load_config
 
                 load_config()
 
