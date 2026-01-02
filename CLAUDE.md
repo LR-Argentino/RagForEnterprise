@@ -18,7 +18,7 @@ APP_ENV=test python src/main.py
 pytest -s
 
 # Run single test
-pytest tests/test_automated_evals.py::test_run_RAG -s
+pytest tests/test_run_rag.py::test_run_RAG -s
 ```
 
 ## Environment Configuration

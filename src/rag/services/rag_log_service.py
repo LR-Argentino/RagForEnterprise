@@ -10,10 +10,10 @@ Backend is configured via config.yaml: audit_log.backend
 import datetime
 from typing import Optional, Union
 
-from ..clients.cosmosdb_client import CosmosDBClient
-from ..clients.sqlite_client import SqliteClient
-from ..config.configuration import get_config
-from ..models import RagLog
+from src.rag.clients import CosmosDBClient
+from src.rag.clients import SqliteClient
+from src.rag.config.configuration import get_config
+from src.rag.models import RagLog
 
 
 class RagLogService:

@@ -1,7 +1,7 @@
 
 """Chat module for RAG functionality."""
 
-from src.chat.rag_chat import (
+from src.rag.chat.rag_chat import (
     AzureSearchError,
     EmbeddingError,
     azure_ai_search_agent,

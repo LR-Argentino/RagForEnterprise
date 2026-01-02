@@ -1,6 +1,6 @@
 """Automated evaluation tests for RAG system."""
 
-from src.evaluation.run_evals import evaluate_generated_answer
+from src.rag.evaluation.run_evals import evaluate_generated_answer
 
 
 def run_RAG(user_questions):

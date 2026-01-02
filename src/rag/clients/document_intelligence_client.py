@@ -8,8 +8,8 @@ from azure.ai.documentintelligence.models import AnalyzeResult
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import AzureError
 
-from src.config.configuration import get_config
-from src.models.pdf_chunk import PDFChunk
+from src.rag.config.configuration import get_config
+from src.rag.models.pdf_chunk import PDFChunk
 
 logger = logging.getLogger(__name__)
 

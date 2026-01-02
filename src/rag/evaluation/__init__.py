@@ -1,6 +1,6 @@
 """Evaluation module for RAG testing."""
 
-from src.evaluation.run_evals import (
+from src.rag.evaluation.run_evals import (
     eval_answers,
     evals,
     evaluate_generated_answer,

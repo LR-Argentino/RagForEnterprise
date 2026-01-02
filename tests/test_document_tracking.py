@@ -13,9 +13,9 @@ from datetime import datetime, timezone
 
 import pytest
 
-from src.models.document_tracker import DocumentStatus, TrackedDocument
-from src.services.document_tracking_service import DocumentTrackingService
-from src.ingestion.pdf_ingestion import compute_content_hash, generate_chunk_id
+from src.rag.models.document_tracker import DocumentStatus, TrackedDocument
+from src.rag.services.document_tracking_service import DocumentTrackingService
+from src.rag.ingestion.pdf_ingestion import compute_content_hash, generate_chunk_id
 
 
 class TestDocumentTrackingService:

@@ -17,13 +17,13 @@ from azure.search.documents import SearchClient
 from datasets import Dataset, load_dataset
 from openai import OpenAI, OpenAIError
 
-from src.clients.document_intelligence_client import (
+from src.rag.clients.document_intelligence_client import (
     DocumentIntelligenceError,
     extract_pages_from_pdf,
 )
-from src.config.configuration import get_config
-from src.models.pdf_chunk import PDFChunk, PDFChunkWithEmbedding
-from src.services.document_tracking_service import DocumentTrackingService
+from src.rag.config.configuration import get_config
+from src.rag.models.pdf_chunk import PDFChunk, PDFChunkWithEmbedding
+from src.rag.services.document_tracking_service import DocumentTrackingService
 
 logger = logging.getLogger(__name__)
 

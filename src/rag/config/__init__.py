@@ -1,6 +1,6 @@
 """Configuration module."""
 
-from src.config.configuration import (
+from src.rag.config.configuration import (
     AppConfig,
     AzureAISearchConfig,
     ConfigurationError,
